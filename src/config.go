@@ -5,6 +5,7 @@ import (
 	"encoding/hex"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -12,22 +13,19 @@ import (
 )
 
 const (
-	defaultCompatName     = "opencode-go"
-	defaultClaudeBaseURL  = "https://opencode.ai/zen/go"
-	defaultCPAConfigPath  = "config.yaml"
-	defaultThresholdPct   = 97
-	defaultStickyTTL      = 24 * time.Hour
-	defaultSuspend        = 30 * time.Minute
-	defaultFallbackCool   = 10 * time.Minute
-	defaultRefreshEvery   = 3 * time.Minute
-	defaultStaleAfter     = 20 * time.Minute
-	defaultCooldownDir    = "/root/.cli-proxy-api"
-	defaultStateDir       = "/root/.cli-proxy-api/opencode-go-pool"
-	cooldownScanInterval  = 10 * time.Second
-	maxWindowBlock        = 35 * 24 * time.Hour
-	claudeProviderKey     = "claude"
-	openaiCompatKindBase  = "openai-compatibility"
-	openaiCompatProviderP = "openai-compatible-"
+	opencodeCompatName   = "opencode-go"
+	defaultCPAConfigPath = "config.yaml"
+	defaultThresholdPct  = 97
+	defaultStickyTTL     = 24 * time.Hour
+	defaultSuspend       = 30 * time.Minute
+	defaultFallbackCool  = 10 * time.Minute
+	defaultRefreshEvery  = 3 * time.Minute
+	defaultStaleAfter    = 20 * time.Minute
+	defaultAuthDir       = "~/.cli-proxy-api"
+	cooldownScanInterval = 10 * time.Second
+	maxWindowBlock       = 35 * 24 * time.Hour
+	claudeProviderKey    = "claude"
+	openaiCompatKindBase = "openai-compatibility"
 )
 
 // accountOverride carries optional per-account settings from the plugin
@@ -41,9 +39,6 @@ type accountOverride struct {
 }
 
 type pluginConfig struct {
-	Enabled          bool              `yaml:"enabled"`
-	CompatName       string            `yaml:"compat-name"`
-	ClaudeBaseURL    string            `yaml:"claude-base-url"`
 	CPAConfigPath    string            `yaml:"cpa-config-path"`
 	ThresholdPercent int               `yaml:"threshold-percent"`
 	StickyTTL        string            `yaml:"sticky-ttl"`
@@ -51,15 +46,10 @@ type pluginConfig struct {
 	FallbackCooldown string            `yaml:"fallback-cooldown"`
 	RefreshInterval  string            `yaml:"dashboard-refresh-interval"`
 	StaleAfter       string            `yaml:"dashboard-stale-after"`
-	CooldownDir      string            `yaml:"cooldown-dir"`
-	StateDir         string            `yaml:"state-dir"`
 	Accounts         []accountOverride `yaml:"accounts"`
 }
 
 type settings struct {
-	Enabled          bool
-	CompatName       string
-	ClaudeBaseURL    string
 	CPAConfigPath    string
 	ThresholdPercent int
 	StickyTTL        time.Duration
@@ -67,8 +57,7 @@ type settings struct {
 	FallbackCooldown time.Duration
 	RefreshInterval  time.Duration
 	StaleAfter       time.Duration
-	CooldownDir      string
-	StateDir         string
+	AuthDir          string
 	Overrides        []accountOverride
 }
 
@@ -90,9 +79,6 @@ func decodeSettings(configYAML []byte) settings {
 		_ = yaml.Unmarshal(configYAML, &cfg)
 	}
 	out := settings{
-		Enabled:          cfg.Enabled,
-		CompatName:       strings.ToLower(strings.TrimSpace(cfg.CompatName)),
-		ClaudeBaseURL:    strings.TrimSpace(cfg.ClaudeBaseURL),
 		CPAConfigPath:    strings.TrimSpace(cfg.CPAConfigPath),
 		ThresholdPercent: cfg.ThresholdPercent,
 		StickyTTL:        parseDurationOr(cfg.StickyTTL, defaultStickyTTL),
@@ -100,24 +86,10 @@ func decodeSettings(configYAML []byte) settings {
 		FallbackCooldown: parseDurationOr(cfg.FallbackCooldown, defaultFallbackCool),
 		RefreshInterval:  parseDurationOr(cfg.RefreshInterval, defaultRefreshEvery),
 		StaleAfter:       parseDurationOr(cfg.StaleAfter, defaultStaleAfter),
-		CooldownDir:      strings.TrimSpace(cfg.CooldownDir),
-		StateDir:         strings.TrimSpace(cfg.StateDir),
 		Overrides:        cfg.Accounts,
-	}
-	if out.CompatName == "" {
-		out.CompatName = defaultCompatName
-	}
-	if out.ClaudeBaseURL == "" {
-		out.ClaudeBaseURL = defaultClaudeBaseURL
 	}
 	if out.CPAConfigPath == "" {
 		out.CPAConfigPath = defaultCPAConfigPath
-	}
-	if out.CooldownDir == "" {
-		out.CooldownDir = defaultCooldownDir
-	}
-	if out.StateDir == "" {
-		out.StateDir = defaultStateDir
 	}
 	if out.ThresholdPercent <= 0 || out.ThresholdPercent > 100 {
 		out.ThresholdPercent = defaultThresholdPct
@@ -128,6 +100,7 @@ func decodeSettings(configYAML []byte) settings {
 // cpaConfig mirrors just the parts of the CPA config file needed to discover
 // OpenCode Go credentials.
 type cpaConfig struct {
+	AuthDir             string `yaml:"auth-dir"`
 	OpenAICompatibility []struct {
 		Name          string `yaml:"name"`
 		BaseURL       string `yaml:"base-url"`
@@ -141,6 +114,35 @@ type cpaConfig struct {
 		APIKey  string `yaml:"api-key"`
 		BaseURL string `yaml:"base-url"`
 	} `yaml:"claude-api-key"`
+}
+
+// resolveAuthDir mirrors CPA's auth-dir resolution so the plugin reads host
+// cooldown files and stores its own state alongside the host credentials.
+func resolveAuthDir(raw string) (string, error) {
+	if raw == "" {
+		raw = defaultAuthDir
+	}
+	if !strings.HasPrefix(raw, "~") {
+		return filepath.Clean(raw), nil
+	}
+
+	home, errHome := os.UserHomeDir()
+	if errHome != nil {
+		return "", fmt.Errorf("resolve auth dir: %w", errHome)
+	}
+	remainder := strings.TrimLeft(strings.TrimPrefix(raw, "~"), `/\`)
+	if remainder == "" {
+		return filepath.Clean(home), nil
+	}
+	remainder = strings.ReplaceAll(remainder, `\`, "/")
+	return filepath.Clean(filepath.Join(home, filepath.FromSlash(remainder))), nil
+}
+
+func pluginStateDir(authDir string) string {
+	if authDir == "" {
+		return ""
+	}
+	return filepath.Join(authDir, pluginID)
 }
 
 // stableIDGenerator replicates CPA's internal/watcher/synthesizer
@@ -190,14 +192,18 @@ type account struct {
 
 // discoverAccounts reads the CPA config file and pairs openai-compatibility
 // and claude-api-key entries that use the same API key into logical accounts.
-func discoverAccounts(cfg settings) ([]*account, error) {
+func discoverAccounts(cfg settings) ([]*account, string, error) {
 	raw, errRead := os.ReadFile(cfg.CPAConfigPath)
 	if errRead != nil {
-		return nil, fmt.Errorf("read CPA config %s: %w", cfg.CPAConfigPath, errRead)
+		return nil, "", fmt.Errorf("read CPA config %s: %w", cfg.CPAConfigPath, errRead)
 	}
 	var cpa cpaConfig
 	if errUnmarshal := yaml.Unmarshal(raw, &cpa); errUnmarshal != nil {
-		return nil, fmt.Errorf("parse CPA config: %w", errUnmarshal)
+		return nil, "", fmt.Errorf("parse CPA config: %w", errUnmarshal)
+	}
+	authDir, errResolve := resolveAuthDir(cpa.AuthDir)
+	if errResolve != nil {
+		return nil, "", fmt.Errorf("resolve CPA auth-dir: %w", errResolve)
 	}
 
 	idGen := newStableIDGenerator()
@@ -231,7 +237,7 @@ func discoverAccounts(cfg settings) ([]*account, error) {
 			entry := compat.APIKeyEntries[j]
 			key := strings.TrimSpace(entry.APIKey)
 			id := idGen.next(kind, key, base, strings.TrimSpace(entry.ProxyURL))
-			if providerName != cfg.CompatName || key == "" {
+			if providerName != opencodeCompatName || key == "" {
 				continue
 			}
 			acct := ensure(key)
@@ -248,10 +254,10 @@ func discoverAccounts(cfg settings) ([]*account, error) {
 		}
 		base := strings.TrimSpace(ck.BaseURL)
 		id := idGen.next("claude:apikey", key, base)
-		if !strings.EqualFold(strings.TrimRight(base, "/"), strings.TrimRight(cfg.ClaudeBaseURL, "/")) {
+		acct, ok := byKey[key]
+		if !ok {
 			continue
 		}
-		acct := ensure(key)
 		acct.ClaudeID = id
 	}
 
@@ -271,7 +277,7 @@ func discoverAccounts(cfg settings) ([]*account, error) {
 			acct.Disabled = ov.Disabled
 		}
 	}
-	return ordered, nil
+	return ordered, authDir, nil
 }
 
 func keySuffix(key string) string {
@@ -279,15 +285,4 @@ func keySuffix(key string) string {
 		return key
 	}
 	return key[len(key)-6:]
-}
-
-func openaiProviderKey(compatName string) string {
-	name := strings.ToLower(strings.TrimSpace(compatName))
-	if name == "" || name == openaiCompatKindBase || strings.HasPrefix(name, openaiCompatProviderP) {
-		if name == "" {
-			return openaiCompatKindBase
-		}
-		return name
-	}
-	return openaiCompatProviderP + name
 }

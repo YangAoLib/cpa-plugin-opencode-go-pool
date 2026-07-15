@@ -5,15 +5,11 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strconv"
 	"testing"
 	"time"
 
 	"github.com/router-for-me/CLIProxyAPI/v7/sdk/pluginapi"
-)
-
-var (
-	jsonMarshal   = json.Marshal
-	jsonUnmarshal = json.Unmarshal
 )
 
 const fixtureConfig = `
@@ -28,7 +24,7 @@ claude-api-key:
   - api-key: sk-key-one
     base-url: https://opencode.ai/zen/go
   - api-key: sk-key-two
-    base-url: https://opencode.ai/zen/go
+    base-url: https://example.invalid/base-url-is-not-a-filter
   - api-key: sk-key-three
     base-url: https://opencode.ai/zen/go
   - api-key: sk-other
@@ -50,7 +46,7 @@ func TestDiscoverAccounts(t *testing.T) {
 	cfg.CPAConfigPath = writeFixture(t)
 	cfg.Overrides = []accountOverride{{KeySuffix: "key-two", Name: "friend-a", WorkspaceID: "wrk_1", CookieFile: "/x"}}
 
-	accounts, err := discoverAccounts(cfg)
+	accounts, _, err := discoverAccounts(cfg)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -73,6 +69,40 @@ func TestDiscoverAccounts(t *testing.T) {
 	}
 	if accounts[0].Name != "go-1" || accounts[2].Name != "go-3" {
 		t.Errorf("default names wrong: %q %q", accounts[0].Name, accounts[2].Name)
+	}
+}
+
+func TestDiscoverAccountsReadsAuthDir(t *testing.T) {
+	authDir := t.TempDir()
+	configDir := t.TempDir()
+	configPath := filepath.Join(configDir, "config.yaml")
+	raw := "auth-dir: " + strconv.Quote(authDir) + "\n" + fixtureConfig
+	if errWrite := os.WriteFile(configPath, []byte(raw), 0o600); errWrite != nil {
+		t.Fatal(errWrite)
+	}
+
+	cfg := decodeSettings(nil)
+	cfg.CPAConfigPath = configPath
+	_, discoveredAuthDir, errDiscover := discoverAccounts(cfg)
+	if errDiscover != nil {
+		t.Fatal(errDiscover)
+	}
+	if discoveredAuthDir != filepath.Clean(authDir) {
+		t.Fatalf("auth-dir = %q, want %q", discoveredAuthDir, filepath.Clean(authDir))
+	}
+}
+
+func TestResolveAuthDirDefault(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+
+	resolved, errResolve := resolveAuthDir("")
+	if errResolve != nil {
+		t.Fatal(errResolve)
+	}
+	want := filepath.Join(home, ".cli-proxy-api")
+	if resolved != want {
+		t.Fatalf("default auth-dir = %q, want %q", resolved, want)
 	}
 }
 
@@ -156,10 +186,11 @@ func TestParseDashboardHTMLDataSlot(t *testing.T) {
 func TestSchedulerHealthyPassthrough(t *testing.T) {
 	cfg := decodeSettings(nil)
 	cfg.CPAConfigPath = writeFixture(t)
-	accounts, err := discoverAccounts(cfg)
+	accounts, authDir, err := discoverAccounts(cfg)
 	if err != nil {
 		t.Fatal(err)
 	}
+	cfg.AuthDir = authDir
 	currentPool().reconfigure(cfg, accounts, nil)
 
 	pick := func(candidates []pluginapi.SchedulerAuthCandidate) pluginapi.SchedulerPickResponse {
@@ -218,11 +249,11 @@ func TestHostCooldownPromotion(t *testing.T) {
 	cfg := decodeSettings(nil)
 	cfg.CPAConfigPath = writeFixture(t)
 	cdsDir := t.TempDir()
-	cfg.CooldownDir = cdsDir
-	accounts, err := discoverAccounts(cfg)
+	accounts, _, err := discoverAccounts(cfg)
 	if err != nil {
 		t.Fatal(err)
 	}
+	cfg.AuthDir = cdsDir
 	p := currentPool()
 	p.reconfigure(cfg, accounts, nil)
 	p.mu.Lock()
@@ -281,11 +312,11 @@ func TestHostCooldownPromotion(t *testing.T) {
 func TestAccountConfigUISettings(t *testing.T) {
 	cfg := decodeSettings(nil)
 	cfg.CPAConfigPath = writeFixture(t)
-	cfg.StateDir = t.TempDir()
-	accounts, err := discoverAccounts(cfg)
+	accounts, _, err := discoverAccounts(cfg)
 	if err != nil {
 		t.Fatal(err)
 	}
+	cfg.AuthDir = t.TempDir()
 	p := currentPool()
 	p.reconfigure(cfg, accounts, nil)
 
@@ -304,7 +335,7 @@ func TestAccountConfigUISettings(t *testing.T) {
 	}
 
 	// Settings survive reconfigure via the persisted file.
-	accounts2, _ := discoverAccounts(cfg)
+	accounts2, _, _ := discoverAccounts(cfg)
 	p.reconfigure(cfg, accounts2, nil)
 	p.mu.Lock()
 	ws, cookie, _ = p.dashboardCredentials(accounts2[0])
@@ -327,7 +358,7 @@ func TestAccountConfigUISettings(t *testing.T) {
 
 func mustJSON(t *testing.T, v any) []byte {
 	t.Helper()
-	raw, err := jsonMarshal(v)
+	raw, err := json.Marshal(v)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -337,14 +368,14 @@ func mustJSON(t *testing.T, v any) []byte {
 func decodePickResponse(t *testing.T, raw []byte) pluginapi.SchedulerPickResponse {
 	t.Helper()
 	var env envelope
-	if err := jsonUnmarshal(raw, &env); err != nil {
+	if err := json.Unmarshal(raw, &env); err != nil {
 		t.Fatal(err)
 	}
 	if !env.OK {
 		t.Fatalf("envelope not ok: %+v", env.Error)
 	}
 	var resp pluginapi.SchedulerPickResponse
-	if err := jsonUnmarshal(env.Result, &resp); err != nil {
+	if err := json.Unmarshal(env.Result, &resp); err != nil {
 		t.Fatal(err)
 	}
 	return resp

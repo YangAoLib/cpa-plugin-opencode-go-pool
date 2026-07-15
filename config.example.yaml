@@ -30,8 +30,6 @@ plugins:
   configs:
     opencode-go-pool:
       enabled: true
-      compat-name: opencode-go
-      claude-base-url: https://opencode.ai/zen/go
       cpa-config-path: config.yaml
       threshold-percent: 97
       sticky-ttl: 24h
@@ -39,8 +37,6 @@ plugins:
       fallback-cooldown: 10m
       dashboard-refresh-interval: 3m
       dashboard-stale-after: 20m
-      cooldown-dir: /root/.cli-proxy-api
-      state-dir: /root/.cli-proxy-api/opencode-go-pool
 
       # Optional overrides are matched by API-key suffix. Dashboard polling
       # can also be configured from the plugin's management page, which is

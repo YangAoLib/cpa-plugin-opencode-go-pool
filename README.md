@@ -33,6 +33,13 @@ automatically and keeps their health state synchronized.
 - Go 1.26 with CGO enabled and a local C compiler toolchain
 - `save-cooldown-status: true` in CPA for reliable persisted cooldown signals
 
+## Repository layout
+
+- `src/` contains the plugin implementation and tests.
+- `.github/scripts/` contains release-only packaging tooling.
+- `registry.json` is the custom CPA plugin-store registry.
+- `config.example.yaml` contains the relevant CPA configuration sections.
+
 ## Installation
 
 ### CPA Manager Plus plugin store
@@ -63,11 +70,11 @@ Build the shared library:
 
 ```sh
 make test
-make build VERSION=0.1.0
-make package VERSION=0.1.0  # produce the CPA plugin-store zip + checksums
+make build VERSION=0.2.0
+make package VERSION=0.2.0  # produce the CPA plugin-store zip + checksums
 ```
 
-Copy `dist/opencode-go-pool-v0.1.0.so` into CPA's
+Copy `dist/opencode-go-pool-v0.2.0.so` into CPA's
 `plugins/linux/amd64/` directory and mount that directory at
 `/CLIProxyAPI/plugins` in the CPA container. The plugin ID is derived from the
 filename by removing the version suffix, so the example above registers as
@@ -101,8 +108,6 @@ Default plugin settings are:
 
 | Setting | Default |
 | --- | --- |
-| `compat-name` | `opencode-go` |
-| `claude-base-url` | `https://opencode.ai/zen/go` |
 | `cpa-config-path` | `config.yaml` |
 | `threshold-percent` | `97` |
 | `sticky-ttl` | `24h` |
@@ -110,8 +115,14 @@ Default plugin settings are:
 | `fallback-cooldown` | `10m` |
 | `dashboard-refresh-interval` | `3m` |
 | `dashboard-stale-after` | `20m` |
-| `cooldown-dir` | `/root/.cli-proxy-api` |
-| `state-dir` | `/root/.cli-proxy-api/opencode-go-pool` |
+
+The plugin reads CLIProxyAPI's `auth-dir` from the same config file. Host
+cooldown records are read from that directory, and plugin-owned UI settings
+are stored under `<auth-dir>/opencode-go-pool`.
+
+Account discovery is intentionally OpenCode-specific: the plugin reads the
+`opencode-go` compatibility provider and pairs Claude credentials by matching
+API key. Provider base URLs do not need to be repeated in plugin settings.
 
 Dashboard polling is optional. Without it, passive 429/401/403 handling and
 cross-protocol health synchronization still work.
@@ -127,7 +138,7 @@ Open the CPA plugin page at:
 Each account can be configured with its OpenCode workspace ID and dashboard
 `auth` cookie. The cookie is more sensitive than an API key:
 
-- it is saved only in `state-dir/settings.json` with mode `0600`;
+- it is saved only in `<auth-dir>/opencode-go-pool/settings.json` with mode `0600`;
 - it is never returned by the management API or written to logs;
 - it should not be committed to Git or placed directly in `config.yaml`;
 - it can instead be supplied through a `cookie-file` mounted read-only into

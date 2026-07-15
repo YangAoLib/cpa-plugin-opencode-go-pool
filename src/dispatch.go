@@ -52,7 +52,8 @@ func configure(raw []byte) error {
 		}
 	}
 	cfg := decodeSettings(req.ConfigYAML)
-	accounts, errDiscover := discoverAccounts(cfg)
+	accounts, authDir, errDiscover := discoverAccounts(cfg)
+	cfg.AuthDir = authDir
 	currentPool().reconfigure(cfg, accounts, errDiscover)
 	fields := map[string]any{"accounts": len(accounts), "threshold": cfg.ThresholdPercent}
 	if errDiscover != nil {
@@ -71,16 +72,6 @@ func pluginRegistration() registration {
 			Author:           "hrz6976",
 			GitHubRepository: "https://github.com/hrz6976/cpa-plugin-opencode-go-pool",
 			ConfigFields: []pluginapi.ConfigField{
-				{
-					Name:        "compat-name",
-					Type:        pluginapi.ConfigFieldTypeString,
-					Description: "Name of the openai-compatibility entry holding OpenCode Go API keys (default opencode-go).",
-				},
-				{
-					Name:        "claude-base-url",
-					Type:        pluginapi.ConfigFieldTypeString,
-					Description: "Base URL identifying OpenCode Go claude-api-key entries (default https://opencode.ai/zen/go).",
-				},
 				{
 					Name:        "cpa-config-path",
 					Type:        pluginapi.ConfigFieldTypeString,
@@ -115,16 +106,6 @@ func pluginRegistration() registration {
 					Name:        "dashboard-stale-after",
 					Type:        pluginapi.ConfigFieldTypeString,
 					Description: "Dashboard data older than this is ignored for proactive blocking (default 20m).",
-				},
-				{
-					Name:        "cooldown-dir",
-					Type:        pluginapi.ConfigFieldTypeString,
-					Description: "Directory of the host's .cds cooldown files used to detect upstream 429/401/403 (default /root/.cli-proxy-api).",
-				},
-				{
-					Name:        "state-dir",
-					Type:        pluginapi.ConfigFieldTypeString,
-					Description: "Directory storing UI-entered workspace IDs and dashboard cookies (default /root/.cli-proxy-api/opencode-go-pool).",
 				},
 				{
 					Name:        "accounts",
