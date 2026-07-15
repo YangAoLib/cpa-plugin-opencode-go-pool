@@ -99,19 +99,19 @@ func buildStatus() poolStatus {
 	for _, acct := range p.accounts {
 		st := p.stateFor(acct)
 		entry := accountStatus{
-			Name:                acct.Name,
-			KeySuffix:           acct.KeySuffix,
-			OpenAIAuthID:        acct.OpenAIID,
-			ClaudeAuthID:        acct.ClaudeID,
-			Disabled:            acct.Disabled,
-			Blocked:             p.blockReason(acct, now),
-			SuspendedUntil:      formatTime(st.SuspendedUntil),
-			SuspendReason:       st.SuspendReason,
-			LastError:           st.LastError,
-			LastUsedAt:          formatTime(st.LastUsedAt),
-			Success:             st.Success,
-			Failed:              st.Failed,
-			Windows: make(map[string]windowStatus, len(windowNames)),
+			Name:           acct.Name,
+			KeySuffix:      acct.KeySuffix,
+			OpenAIAuthID:   acct.OpenAIID,
+			ClaudeAuthID:   acct.ClaudeID,
+			Disabled:       acct.Disabled,
+			Blocked:        p.blockReason(acct, now),
+			SuspendedUntil: formatTime(st.SuspendedUntil),
+			SuspendReason:  st.SuspendReason,
+			LastError:      st.LastError,
+			LastUsedAt:     formatTime(st.LastUsedAt),
+			Success:        st.Success,
+			Failed:         st.Failed,
+			Windows:        make(map[string]windowStatus, len(windowNames)),
 		}
 		workspaceID, cookie, cookieFile := p.dashboardCredentials(acct)
 		entry.WorkspaceID = workspaceID
