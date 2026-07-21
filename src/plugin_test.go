@@ -265,7 +265,7 @@ func TestHostCooldownPromotion(t *testing.T) {
 	p.mu.Unlock()
 
 	retry := time.Now().Add(20 * time.Minute).UTC()
-	cds := `{"version":1,"records":[{"auth_id":"` + accounts[2].OpenAIID + `","model":"glm-5.2","status":"cooling","next_retry_after":"` + retry.Format(time.RFC3339Nano) + `","reason":"quota","quota":{"exceeded":true,"reason":"quota"},"last_error":{"message":"weekly limit exceeded, retry later","http_status":429},"updated_at":"` + time.Now().UTC().Format(time.RFC3339Nano) + `"}]}`
+	cds := `{"version":1,"records":[{"auth_id":"` + accounts[2].OpenAIID + `","model":"glm-5.2","status":"cooling","next_retry_after":"` + retry.Format(time.RFC3339Nano) + `","reason":"quota","quota":{"exceeded":true,"reason":"quota"},"last_error":{"message":"weekly limit exceeded, retry later","http_status":429},"updated_at":"` + time.Now().Add(-time.Second).UTC().Format(time.RFC3339Nano) + `"}]}`
 	if errWrite := os.WriteFile(filepath.Join(cdsDir, "test.cds"), []byte(cds), 0o600); errWrite != nil {
 		t.Fatal(errWrite)
 	}
