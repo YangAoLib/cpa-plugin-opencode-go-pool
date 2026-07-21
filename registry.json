@@ -7,8 +7,8 @@
       "description": "Quota-aware cross-protocol account pooling and failover for OpenCode Go subscriptions.",
       "author": "hrz6976",
       "version": "0.3.0",
-      "repository": "https://github.com/hrz6976/cpa-plugin-opencode-go-pool",
-      "homepage": "https://github.com/hrz6976/cpa-plugin-opencode-go-pool",
+      "repository": "https://github.com/YangAoLib/cpa-plugin-opencode-go-pool",
+      "homepage": "https://github.com/YangAoLib/cpa-plugin-opencode-go-pool",
       "license": "MIT",
       "tags": [
         "Scheduler",
