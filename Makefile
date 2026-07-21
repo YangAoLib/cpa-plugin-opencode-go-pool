@@ -28,7 +28,7 @@ package: build
 build-windows:
 	mkdir -p "$(dir $(OUT_WINDOWS))"
 	CGO_ENABLED=1 GOOS=windows GOARCH=amd64 $(GO) build -buildvcs=false -trimpath -buildmode=c-shared \
-		-ldflags "-s -w -X main.pluginVersion=$(VERSION)" -o "$(OUT_WINDOWS)" ./src
+		-ldflags "-s -w -X main.pluginVersion=$(VERSION) -extldflags=-Wl,--export-all-symbols" -o "$(OUT_WINDOWS)" ./src
 	-rm -f dist/*.h dist/*.def
 
 package-windows: build-windows

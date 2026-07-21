@@ -1,6 +1,6 @@
 module github.com/hrz6976/cpa-plugin-opencode-go-pool
 
-go 1.25.0
+go 1.26.0
 
 require (
 	github.com/router-for-me/CLIProxyAPI/v7 v7.2.67
