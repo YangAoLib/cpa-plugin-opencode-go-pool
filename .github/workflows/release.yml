@@ -60,3 +60,74 @@ jobs:
               --title "${GITHUB_REF_NAME}" \
               --generate-notes
           fi
+
+  release-windows:
+    needs: release
+    runs-on: windows-2022
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Set up Go
+        uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Install build dependencies (MinGW-w64 for CGO, make)
+        shell: bash
+        run: |
+          set -euo pipefail
+          choco install mingw make --no-progress -y
+
+      - name: Resolve release version
+        shell: bash
+        run: |
+          set -euo pipefail
+          VERSION="${GITHUB_REF_NAME#v}"
+          if [[ ! "${VERSION}" =~ ^[0-9]+\.[0-9]+\.[0-9]+([.-][0-9A-Za-z.-]+)?$ ]]; then
+            echo "Unsupported release tag: ${GITHUB_REF_NAME}" >&2
+            exit 1
+          fi
+          echo "VERSION=${VERSION}" >> "${GITHUB_ENV}"
+          echo "ARCHIVE=opencode-go-pool_${VERSION}_windows_amd64.zip" >> "${GITHUB_ENV}"
+
+      - name: Test
+        shell: bash
+        run: make test
+
+      - name: Build and package Windows amd64 plugin
+        shell: bash
+        run: make package-windows VERSION="${VERSION}"
+
+      - name: Verify installer artifacts
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd dist
+          python -c "
+import hashlib, zipfile, os
+
+archive = os.environ['ARCHIVE']
+with open('checksums-windows.txt') as f:
+    expected, fn = f.read().strip().split('  ')
+
+actual = hashlib.sha256(open(archive, 'rb').read()).hexdigest()
+assert actual == expected, f'Checksum mismatch: {actual} != {expected}'
+
+z = zipfile.ZipFile(archive)
+names = z.namelist()
+expected_name = 'opencode-go-pool.dll'
+assert len(names) == 1 and names[0] == expected_name, \
+    f'Expected [{expected_name}], got {names}'
+print('All checks passed:', archive)
+"
+
+      - name: Upload Windows binaries to GitHub release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          gh release upload "${GITHUB_REF_NAME}" \
+            "dist/${ARCHIVE}" dist/checksums-windows.txt --clobber

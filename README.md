@@ -30,6 +30,7 @@ automatically and keeps their health state synchronized.
 
 - CLIProxyAPI v7.2.67 or a compatible release with the C ABI plugin system
 - Linux amd64 with glibc 2.36 or newer for the default build target
+- Windows amd64 with MinGW-w64 for the Windows build target
 - Go 1.26 with CGO enabled and a local C compiler toolchain
 - `save-cooldown-status: true` in CPA for reliable persisted cooldown signals
 
@@ -59,7 +60,7 @@ Reload or restart CPA, open **CPA Manager Plus → Plugin Store**, refresh the
 store, and install **OpenCode Go Pool**. The installer verifies the release
 checksum and writes the versioned library under `plugins/linux/amd64/`.
 
-The published package currently supports Linux amd64 with glibc 2.36 or newer.
+The published package supports Linux amd64 (glibc 2.36+) and Windows amd64.
 Installing the plugin does not create OpenCode credentials; complete the
 [configuration](#configuration) section below before enabling production
 traffic.
@@ -72,6 +73,13 @@ Build the shared library:
 make test
 make build VERSION=0.2.0
 make package VERSION=0.2.0  # produce the CPA plugin-store zip + checksums
+```
+
+Build the Windows shared library on a machine with MinGW-w64:
+
+```sh
+make build-windows VERSION=0.2.0
+make package-windows VERSION=0.2.0  # produce _windows_amd64.zip + checksums-windows.txt
 ```
 
 Copy `dist/opencode-go-pool-v0.2.0.so` into CPA's
@@ -202,9 +210,11 @@ make clean
 
 `make test` runs `go vet ./...` and `go test ./...`. `make package` creates
 `opencode-go-pool_<version>_linux_amd64.zip` and `checksums.txt` in `dist/`
-using the exact CPA plugin-store layout. CI additionally checks formatting and
-builds the C ABI shared library. Pushing a `v<version>` tag publishes the
-installer artifacts as a GitHub Release.
+using the exact CPA plugin-store layout. `make package-windows` creates
+`opencode-go-pool_<version>_windows_amd64.zip` and `checksums-windows.txt`.
+CI additionally checks formatting and builds the C ABI shared library.
+Pushing a `v<version>` tag publishes the installer artifacts for both
+platforms as a single GitHub Release.
 
 ## Known limitations
 
@@ -221,3 +231,9 @@ installer artifacts as a GitHub Release.
 ## License
 
 [MIT](LICENSE)
+
+---
+
+> **Git 信息**
+> - 分支：`main`
+> - 变更：添加 Windows 跨平台编译发行支持
