@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strconv"
 	"testing"
 	"time"
@@ -95,6 +96,9 @@ func TestDiscoverAccountsReadsAuthDir(t *testing.T) {
 func TestResolveAuthDirDefault(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
+	if runtime.GOOS == "windows" {
+		t.Setenv("USERPROFILE", home)
+	}
 
 	resolved, errResolve := resolveAuthDir("")
 	if errResolve != nil {
