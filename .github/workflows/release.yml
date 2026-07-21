@@ -114,5 +114,10 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          mkdir -p dist/merge
+          gh release download "${GITHUB_REF_NAME}" \
+            -p checksums.txt -D dist/merge
+          cat dist/merge/checksums.txt dist/checksums-windows.txt > dist/checksums-merged.txt
           gh release upload "${GITHUB_REF_NAME}" \
-            "dist/${ARCHIVE}" dist/checksums-windows.txt --clobber
+            "dist/${ARCHIVE}" \
+            "dist/checksums-merged.txt#checksums.txt" --clobber
