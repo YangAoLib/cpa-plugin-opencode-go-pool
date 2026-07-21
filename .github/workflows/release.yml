@@ -30,8 +30,7 @@ jobs:
             exit 1
           fi
           echo "VERSION=${VERSION}" >> "${GITHUB_ENV}"
-          echo "ARCHIVE_LINUX=opencode-go-pool_${VERSION}_linux_amd64.zip" >> "${GITHUB_ENV}"
-          echo "ARCHIVE_WINDOWS=opencode-go-pool_${VERSION}_windows_amd64.zip" >> "${GITHUB_ENV}"
+          echo "ARCHIVE=opencode-go-pool_${VERSION}_linux_amd64.zip" >> "${GITHUB_ENV}"
 
       - name: Test
         run: make test
@@ -39,46 +38,81 @@ jobs:
       - name: Build and package Linux amd64 plugin
         run: make package VERSION="${VERSION}"
 
-      - name: Verify Linux installer artifacts
+      - name: Verify installer artifacts
         run: |
           set -euo pipefail
           cd dist
           sha256sum --check checksums.txt
-          test "$(unzip -Z1 "${ARCHIVE_LINUX}")" = "opencode-go-pool.so"
-
-      - name: Install MinGW-w64 cross-compiler for Windows target
-        run: |
-          set -euo pipefail
-          sudo apt-get update -qq
-          sudo apt-get install -y -qq gcc-mingw-w64-x86-64
-
-      - name: Build and package Windows amd64 plugin
-        env:
-          CC: x86_64-w64-mingw32-gcc
-        run: make package-windows VERSION="${VERSION}"
-
-      - name: Verify Windows installer artifacts
-        run: |
-          set -euo pipefail
-          cd dist
-          sha256sum --check checksums-windows.txt
-          test "$(unzip -Z1 "${ARCHIVE_WINDOWS}")" = "opencode-go-pool.dll"
+          test "$(unzip -Z1 "${ARCHIVE}")" = "opencode-go-pool.so"
 
       - name: Publish GitHub release
         env:
-          GH_TOKEN: ${{ github.token }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
           if gh release view "${GITHUB_REF_NAME}" >/dev/null 2>&1; then
             gh release upload "${GITHUB_REF_NAME}" \
-              "dist/${ARCHIVE_LINUX}" dist/checksums.txt \
-              "dist/${ARCHIVE_WINDOWS}" dist/checksums-windows.txt --clobber
+              "dist/${ARCHIVE}" dist/checksums.txt --clobber
           else
             gh release create "${GITHUB_REF_NAME}" \
-              "dist/${ARCHIVE_LINUX}" dist/checksums.txt \
-              "dist/${ARCHIVE_WINDOWS}" dist/checksums-windows.txt \
+              "dist/${ARCHIVE}" dist/checksums.txt \
               --verify-tag \
               --title "${GITHUB_REF_NAME}" \
               --generate-notes
           fi
 
+  release-windows:
+    needs: release
+    runs-on: windows-2022
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Set up Go
+        uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Install make
+        shell: pwsh
+        run: choco install make --no-progress -y
+
+      - name: Resolve release version
+        shell: bash
+        run: |
+          set -euo pipefail
+          VERSION="${GITHUB_REF_NAME#v}"
+          if [[ ! "${VERSION}" =~ ^[0-9]+\.[0-9]+\.[0-9]+([.-][0-9A-Za-z.-]+)?$ ]]; then
+            echo "Unsupported release tag: ${GITHUB_REF_NAME}" >&2
+            exit 1
+          fi
+          echo "VERSION=${VERSION}" >> "${GITHUB_ENV}"
+          echo "ARCHIVE=opencode-go-pool_${VERSION}_windows_amd64.zip" >> "${GITHUB_ENV}"
+
+      - name: Test
+        shell: bash
+        run: make test-no-vet
+
+      - name: Build and package Windows amd64 plugin
+        shell: bash
+        run: make package-windows VERSION="${VERSION}"
+
+      - name: Verify installer artifacts
+        shell: bash
+        run: |
+          set -euo pipefail
+          go run -buildvcs=false ./.github/scripts/package-release.go \
+            -archive "dist/${ARCHIVE}" \
+            -checksum "dist/checksums-windows.txt" \
+            -entry "opencode-go-pool.dll" \
+            -verify
+
+      - name: Upload Windows binaries to GitHub release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          gh release upload "${GITHUB_REF_NAME}" \
+            "dist/${ARCHIVE}" dist/checksums-windows.txt --clobber
