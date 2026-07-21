@@ -2,6 +2,7 @@ package main
 
 import (
 	"archive/zip"
+	"bytes"
 	"crypto/sha256"
 	"encoding/hex"
 	"flag"
@@ -9,6 +10,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strings"
 )
 
 func main() {
@@ -16,7 +18,19 @@ func main() {
 	entryName := flag.String("entry", "", "dynamic library name inside the zip")
 	archivePath := flag.String("archive", "", "path to the output zip archive")
 	checksumPath := flag.String("checksum", "", "path to the output checksum file")
+	verify := flag.Bool("verify", false, "verify an existing archive against its checksum")
 	flag.Parse()
+
+	if *verify {
+		if *archivePath == "" || *checksumPath == "" || *entryName == "" {
+			fatalf("archive, checksum, and entry are required for verification")
+		}
+		if err := verifyArchive(*archivePath, *checksumPath, *entryName); err != nil {
+			fatalf("%v", err)
+		}
+		fmt.Printf("All checks passed: %s\n", filepath.Base(*archivePath))
+		return
+	}
 
 	if *libraryPath == "" || *entryName == "" || *archivePath == "" || *checksumPath == "" {
 		fatalf("library, entry, archive, and checksum are required")
@@ -79,6 +93,40 @@ func packageLibrary(libraryPath, entryName, archivePath string) ([]byte, error) 
 		return nil, fmt.Errorf("read archive: %w", errRead)
 	}
 	return data, nil
+}
+
+func verifyArchive(archivePath, checksumPath, expectedEntry string) error {
+	archiveData, err := os.ReadFile(archivePath)
+	if err != nil {
+		return fmt.Errorf("read archive: %w", err)
+	}
+	// Verify SHA-256 checksum.
+	checksumData, err := os.ReadFile(checksumPath)
+	if err != nil {
+		return fmt.Errorf("read checksum file: %w", err)
+	}
+	parts := strings.Fields(strings.TrimSpace(string(checksumData)))
+	if len(parts) < 2 {
+		return fmt.Errorf("invalid checksum file format")
+	}
+	expectedChecksum := parts[0]
+	hash := sha256.Sum256(archiveData)
+	actualChecksum := hex.EncodeToString(hash[:])
+	if actualChecksum != expectedChecksum {
+		return fmt.Errorf("checksum mismatch: %s != %s", actualChecksum, expectedChecksum)
+	}
+	// Verify zip contains exactly the expected entry.
+	zipReader, err := zip.NewReader(bytes.NewReader(archiveData), int64(len(archiveData)))
+	if err != nil {
+		return fmt.Errorf("open zip for verification: %w", err)
+	}
+	if len(zipReader.File) != 1 {
+		return fmt.Errorf("expected 1 entry in zip, got %d", len(zipReader.File))
+	}
+	if zipReader.File[0].Name != expectedEntry {
+		return fmt.Errorf("expected entry %q, got %q", expectedEntry, zipReader.File[0].Name)
+	}
+	return nil
 }
 
 func fatalf(format string, args ...any) {

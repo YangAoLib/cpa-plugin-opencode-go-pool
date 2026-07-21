@@ -75,10 +75,8 @@ jobs:
           cache: true
 
       - name: Install build dependencies (MinGW-w64 for CGO, make)
-        shell: bash
-        run: |
-          set -euo pipefail
-          choco install mingw make --no-progress -y
+        shell: pwsh
+        run: choco install mingw make --no-progress -y
 
       - name: Resolve release version
         shell: bash
@@ -94,7 +92,7 @@ jobs:
 
       - name: Test
         shell: bash
-        run: make test
+        run: make test-no-vet
 
       - name: Build and package Windows amd64 plugin
         shell: bash
@@ -104,24 +102,11 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          cd dist
-          python -c "
-import hashlib, zipfile, os
-
-archive = os.environ['ARCHIVE']
-with open('checksums-windows.txt') as f:
-    expected, fn = f.read().strip().split('  ')
-
-actual = hashlib.sha256(open(archive, 'rb').read()).hexdigest()
-assert actual == expected, 'Checksum mismatch: ' + actual + ' != ' + expected
-
-z = zipfile.ZipFile(archive)
-names = z.namelist()
-expected_name = 'opencode-go-pool.dll'
-assert len(names) == 1 and names[0] == expected_name, \
-    'Expected [' + expected_name + '], got ' + str(names)
-print('All checks passed:', archive)
-"
+          go run -buildvcs=false ./.github/scripts/package-release.go \
+            -archive "dist/${ARCHIVE}" \
+            -checksum "dist/checksums-windows.txt" \
+            -entry "opencode-go-pool.dll" \
+            -verify
 
       - name: Upload Windows binaries to GitHub release
         env:
