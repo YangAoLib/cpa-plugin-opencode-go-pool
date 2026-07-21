@@ -113,13 +113,13 @@ with open('checksums-windows.txt') as f:
     expected, fn = f.read().strip().split('  ')
 
 actual = hashlib.sha256(open(archive, 'rb').read()).hexdigest()
-assert actual == expected, f'Checksum mismatch: {actual} != {expected}'
+assert actual == expected, 'Checksum mismatch: ' + actual + ' != ' + expected
 
 z = zipfile.ZipFile(archive)
 names = z.namelist()
 expected_name = 'opencode-go-pool.dll'
 assert len(names) == 1 and names[0] == expected_name, \
-    f'Expected [{expected_name}], got {names}'
+    'Expected [' + expected_name + '], got ' + str(names)
 print('All checks passed:', archive)
 "
 
