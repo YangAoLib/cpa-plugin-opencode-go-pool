@@ -37,8 +37,13 @@ package-windows: build-windows
 			-archive "$(ARCHIVE_WINDOWS)" -checksum "$(ARCHIVE_CHECKSUM_WINDOWS)"
 	cp "$(ARCHIVE_CHECKSUM_WINDOWS)" dist/checksums-windows.txt
 
-test:
+test: vet
+	$(GO) test ./...
+
+vet:
 	$(GO) vet ./...
+
+test-no-vet:
 	$(GO) test ./...
 
 deploy: build
